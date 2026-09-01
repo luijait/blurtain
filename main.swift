@@ -216,21 +216,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: active ? "Desactivar censura" : "Activar censura", action: #selector(toggle), keyEquivalent: "")
+        menu.addItem(withTitle: active ? "Disable censorship" : "Enable censorship", action: #selector(toggle), keyEquivalent: "")
         if !hasPermission {
-            menu.addItem(withTitle: "⚠︎ Falta permiso de Grabación de pantalla…", action: #selector(openPrivacy), keyEquivalent: "")
+            menu.addItem(withTitle: "⚠︎ Screen Recording permission missing…", action: #selector(openPrivacy), keyEquivalent: "")
         }
         menu.addItem(.separator())
-        let header = NSMenuItem(title: "Ámbito", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: "Scope", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
 
-        let allItem = menu.addItem(withTitle: "Todo el equipo", action: #selector(scopeAllAction), keyEquivalent: "")
+        let allItem = menu.addItem(withTitle: "Whole computer", action: #selector(scopeAllAction), keyEquivalent: "")
         if scope == .all { allItem.state = .on }
 
         for s in NSScreen.screens {
             let did = screenID(s)
-            let it = menu.addItem(withTitle: "Pantalla: \(s.localizedName)", action: #selector(scopeScreenAction(_:)), keyEquivalent: "")
+            let it = menu.addItem(withTitle: "Display: \(s.localizedName)", action: #selector(scopeScreenAction(_:)), keyEquivalent: "")
             it.representedObject = NSNumber(value: did)
             if scope == .screen(did) { it.state = .on }
         }
@@ -240,14 +240,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for w in wins.prefix(12) {
             var label = w.title.isEmpty ? "\(Int(w.rect.width))×\(Int(w.rect.height))" : w.title
             if label.count > 44 { label = String(label.prefix(44)) + "…" }
-            let it = menu.addItem(withTitle: "Ventana: \(w.appName) — \(label)", action: #selector(scopeWindowAction(_:)), keyEquivalent: "")
+            let it = menu.addItem(withTitle: "Window: \(w.appName) — \(label)", action: #selector(scopeWindowAction(_:)), keyEquivalent: "")
             it.representedObject = NSNumber(value: w.id)
             if scope == .window(w.id) { it.state = .on }
         }
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Reiniciar Blurtain", action: #selector(restartApp), keyEquivalent: "")
-        menu.addItem(withTitle: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Restart Blurtain", action: #selector(restartApp), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for it in menu.items where it.action != #selector(NSApplication.terminate(_:)) { it.target = self }
         return menu
     }
@@ -325,10 +325,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !warnedNoPermission {
                 warnedNoPermission = true
                 let a = NSAlert()
-                a.messageText = "Blurtain no tiene permiso de Grabación de pantalla"
-                a.informativeText = "Sin él no puede localizar el texto y cubre las ventanas ENTERAS (modo seguro).\n\n1. Abre Ajustes y activa Blurtain en «Grabación de pantalla y audio del sistema».\n2. Vuelve al icono → clic derecho → «Reiniciar Blurtain»."
-                a.addButton(withTitle: "Abrir Ajustes")
-                a.addButton(withTitle: "Seguir igualmente")
+                a.messageText = "Blurtain has no Screen Recording permission"
+                a.informativeText = "Without it, Blurtain can't locate the text and covers windows ENTIRELY (fail-safe mode).\n\n1. Open Settings and enable Blurtain under \"Screen & System Audio Recording\".\n2. Back at the menu bar icon → \"Restart Blurtain\"."
+                a.addButton(withTitle: "Open Settings")
+                a.addButton(withTitle: "Continue anyway")
                 NSApp.activate(ignoringOtherApps: true)
                 if a.runModal() == .alertFirstButtonReturn { openPrivacy() }
             }
