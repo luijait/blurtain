@@ -1,4 +1,8 @@
-# Blurtain
+<p align="center">
+  <img src="assets/icon.png" width="140" alt="Blurtain">
+</p>
+
+<h1 align="center">Blurtain</h1>
 
 **blur + curtain** — a macOS menu bar app that draws a live censorship curtain over the *text* of your sensitive windows, and nothing else.
 

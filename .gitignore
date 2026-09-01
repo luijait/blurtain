@@ -7,4 +7,7 @@ sigtest
 *.pem
 *.p12
 *.png
+!assets/icon.png
+gen_icon
+Blurtain.iconset/
 .DS_Store
