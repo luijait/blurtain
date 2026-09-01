@@ -74,14 +74,27 @@ func log(_ s: String) {
     }
 }
 
-struct WinRect { let id: CGWindowID; let bid: String; let rect: CGRect }
+struct WinRect { let id: CGWindowID; let bid: String; let rect: CGRect; let title: String; let appName: String }
+
+// Censorship scope: everything, one display, or one specific window.
+enum Scope: Equatable {
+    case all
+    case screen(CGDirectDisplayID)
+    case window(CGWindowID)
+}
+
+func screenID(_ s: NSScreen) -> CGDirectDisplayID {
+    (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+}
 
 var pidToBundle: [pid_t: String] = [:]
+var pidToName: [pid_t: String] = [:]
 func bundleID(forPID pid: pid_t) -> String {
     if let b = pidToBundle[pid] { return b }
-    let b = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "?"
-    pidToBundle[pid] = b
-    return b
+    let app = NSRunningApplication(processIdentifier: pid)
+    pidToBundle[pid] = app?.bundleIdentifier ?? "?"
+    pidToName[pid] = app?.localizedName ?? "?"
+    return pidToBundle[pid]!
 }
 
 func sensitiveWindowRects() -> [WinRect] {
@@ -96,7 +109,9 @@ func sensitiveWindowRects() -> [WinRect] {
         guard cfg.blurBundleIDs.contains(bid) else { continue }
         let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
         if r.width < 40 || r.height < 40 { continue }
-        out.append(WinRect(id: CGWindowID(num), bid: bid, rect: r))
+        out.append(WinRect(id: CGWindowID(num), bid: bid, rect: r,
+                           title: info[kCGWindowName as String] as? String ?? "",
+                           appName: pidToName[pid_t(pid)] ?? bid))
     }
     return out
 }
@@ -168,9 +183,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var textRects: [CGWindowID: [DetectedRect]] = [:]
     var detecting = false
     var lastDetect = Date.distantPast
-    var lastToggle = Date.distantPast
     var warnedNoPermission = false
     var analyzed = false
+    var scope: Scope = .all
 
     var hasPermission: Bool { CGPreflightScreenCaptureAccess() }
 
@@ -194,21 +209,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func clicked(_ sender: Any?) {
-        if let ev = NSApp.currentEvent, ev.type == .rightMouseUp {
-            let menu = NSMenu()
-            menu.addItem(withTitle: active ? "Desactivar censura" : "Activar censura", action: #selector(toggle), keyEquivalent: "")
-            if !hasPermission {
-                menu.addItem(withTitle: "⚠︎ Falta permiso de Grabación de pantalla…", action: #selector(openPrivacy), keyEquivalent: "")
-            }
-            menu.addItem(withTitle: "Reiniciar Blurtain", action: #selector(restartApp), keyEquivalent: "")
-            menu.addItem(.separator())
-            menu.addItem(withTitle: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-            for it in menu.items where it.action != #selector(NSApplication.terminate(_:)) { it.target = self }
-            statusItem.menu = menu
-            statusItem.button?.performClick(nil)
-            statusItem.menu = nil
-        } else {
-            toggle()
+        statusItem.menu = buildMenu()
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    func buildMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: active ? "Desactivar censura" : "Activar censura", action: #selector(toggle), keyEquivalent: "")
+        if !hasPermission {
+            menu.addItem(withTitle: "⚠︎ Falta permiso de Grabación de pantalla…", action: #selector(openPrivacy), keyEquivalent: "")
+        }
+        menu.addItem(.separator())
+        let header = NSMenuItem(title: "Ámbito", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let allItem = menu.addItem(withTitle: "Todo el equipo", action: #selector(scopeAllAction), keyEquivalent: "")
+        if scope == .all { allItem.state = .on }
+
+        for s in NSScreen.screens {
+            let did = screenID(s)
+            let it = menu.addItem(withTitle: "Pantalla: \(s.localizedName)", action: #selector(scopeScreenAction(_:)), keyEquivalent: "")
+            it.representedObject = NSNumber(value: did)
+            if scope == .screen(did) { it.state = .on }
+        }
+
+        let wins = sensitiveWindowRects()
+        if !wins.isEmpty { menu.addItem(.separator()) }
+        for w in wins.prefix(12) {
+            var label = w.title.isEmpty ? "\(Int(w.rect.width))×\(Int(w.rect.height))" : w.title
+            if label.count > 44 { label = String(label.prefix(44)) + "…" }
+            let it = menu.addItem(withTitle: "Ventana: \(w.appName) — \(label)", action: #selector(scopeWindowAction(_:)), keyEquivalent: "")
+            it.representedObject = NSNumber(value: w.id)
+            if scope == .window(w.id) { it.state = .on }
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Reiniciar Blurtain", action: #selector(restartApp), keyEquivalent: "")
+        menu.addItem(withTitle: "Salir", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        for it in menu.items where it.action != #selector(NSApplication.terminate(_:)) { it.target = self }
+        return menu
+    }
+
+    @objc func scopeAllAction() { setScope(.all) }
+    @objc func scopeScreenAction(_ sender: NSMenuItem) {
+        guard let n = sender.representedObject as? NSNumber else { return }
+        setScope(.screen(n.uint32Value))
+    }
+    @objc func scopeWindowAction(_ sender: NSMenuItem) {
+        guard let n = sender.representedObject as? NSNumber else { return }
+        setScope(.window(CGWindowID(truncating: n)))
+    }
+
+    func setScope(_ s: Scope) {
+        scope = s
+        log("scope: \(s)")
+        if active { rebuildForScope() } else { activate() }
+    }
+
+    // Which screens need an overlay window for the current scope.
+    func overlayScreens() -> [NSScreen] {
+        if case .screen(let did) = scope, let s = NSScreen.screens.first(where: { screenID($0) == did }) {
+            return [s]
+        }
+        return NSScreen.screens
+    }
+
+    func rebuildForScope() {
+        overlays.forEach { $0.orderOut(nil) }
+        overlays = overlayScreens().map { OverlayWindow(screen: $0) }
+        overlays.forEach { $0.orderFrontRegardless() }
+        lastDetect = .distantPast
+        refreshOverlays()
+        runDetectionIfDue()
+    }
+
+    // Does the current scope include this window? (mainH: main screen height
+    // for converting NSScreen frames to CG top-left coords.)
+    func scopeIncludes(_ w: WinRect, mainH: CGFloat) -> Bool {
+        switch scope {
+        case .all: return true
+        case .window(let id): return w.id == id
+        case .screen(let did):
+            guard let s = NSScreen.screens.first(where: { screenID($0) == did }) else { return false }
+            let f = s.frame
+            let cgFrame = CGRect(x: f.origin.x, y: mainH - f.origin.y - f.height, width: f.width, height: f.height)
+            return w.rect.intersects(cgFrame)
         }
     }
 
@@ -225,12 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc func toggle() {
-        // Debounce: a double-click would otherwise activate and instantly deactivate.
-        guard Date().timeIntervalSince(lastToggle) > 0.5 else { return }
-        lastToggle = Date()
-        active ? deactivate() : activate()
-    }
+    @objc func toggle() { active ? deactivate() : activate() }
 
     func activate() {
         cfg = loadConfig()
@@ -252,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         updateIcon()
-        overlays = NSScreen.screens.map { OverlayWindow(screen: $0) }
+        overlays = overlayScreens().map { OverlayWindow(screen: $0) }
         overlays.forEach { $0.orderFrontRegardless() }
         refreshOverlays()
         timer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
@@ -279,7 +361,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mainH = NSScreen.screens.first(where: { $0.frame.origin == .zero })?.frame.height ?? NSScreen.main?.frame.height ?? 0
         var global: [(CGRect, CGColor?)] = [] // CG top-left coords
         let useColors = cfg.colorFromText
-        for w in wins {
+        for w in wins where scopeIncludes(w, mainH: mainH) {
             if let dets = textRects[w.id] {
                 for d in dets {
                     global.append((CGRect(x: w.rect.origin.x + d.rect.origin.x,
@@ -320,6 +402,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let blurIDs = Set(cfg.blurBundleIDs)
         let scale = cfg.captureScale
         let debug = cfg.debug
+        // Resolve scope on the main thread; SCWindow frames are CG top-left coords.
+        var scopeWindowID: CGWindowID?
+        var scopeCGFrame: CGRect?
+        switch scope {
+        case .all: break
+        case .window(let id): scopeWindowID = id
+        case .screen(let did):
+            let mainH = NSScreen.screens.first(where: { $0.frame.origin == .zero })?.frame.height ?? NSScreen.main?.frame.height ?? 0
+            if let s = NSScreen.screens.first(where: { screenID($0) == did }) {
+                let f = s.frame
+                scopeCGFrame = CGRect(x: f.origin.x, y: mainH - f.origin.y - f.height, width: f.width, height: f.height)
+            } else {
+                scopeCGFrame = .null
+            }
+        }
         Task.detached(priority: .userInitiated) { [weak self] in
             defer {
                 Task { @MainActor in
@@ -337,7 +434,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let content else { return }
             let targets = content.windows.filter {
                 guard let app = $0.owningApplication else { return false }
-                return blurIDs.contains(app.bundleIdentifier) && $0.windowLayer == 0 && $0.frame.width >= 40
+                guard blurIDs.contains(app.bundleIdentifier) && $0.windowLayer == 0 && $0.frame.width >= 40 else { return false }
+                if let wid = scopeWindowID, CGWindowID($0.windowID) != wid { return false }
+                if let f = scopeCGFrame, !$0.frame.intersects(f) { return false }
+                return true
             }
             var results: [CGWindowID: [DetectedRect]] = [:]
             var summary: [String] = []

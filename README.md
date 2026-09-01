@@ -28,13 +28,17 @@ On first activation macOS will ask for **Screen Recording** permission (Blurtain
 
 ## Usage
 
-| Action | Result |
+Click the menu bar icon to open the menu:
+
+| Item | Result |
 |---|---|
-| Left-click 🙉 | Toggle censorship on/off |
-| 🙈⏳ | Active, first analysis in progress (windows fully covered) |
-| 🙈 | Active, text-level bars in place |
-| ⚠︎ | Screen-recording permission missing — fix it via right-click menu |
-| Right-click | Menu: toggle, restart, quit |
+| Activar/Desactivar censura | Toggle with the current scope |
+| **Ámbito** → Todo el equipo | Censor sensitive windows everywhere (default) |
+| **Ámbito** → Pantalla: … | Censor only the sensitive windows on that display |
+| **Ámbito** → Ventana: … | Censor one specific window only |
+| Reiniciar Blurtain | Relaunch (needed after granting the permission) |
+
+Picking a scope activates censorship on it immediately. Icon states: 🙈⏳ analyzing (windows fully covered), 🙈 text-level bars in place, ⚠︎ screen-recording permission missing.
 
 ## Configuration
 
