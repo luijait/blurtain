@@ -38,13 +38,9 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 </dict></plist>
 EOF
 
-# Prefer a stable signing identity if one exists (keeps the screen-recording
-# permission across rebuilds); fall back to ad-hoc.
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "Blurtain\|Censor Signing"; then
-    IDENTITY=$(security find-identity -v -p codesigning | grep -oE '"[^"]+"' | head -1 | tr -d '"')
-    codesign -s "$IDENTITY" --force "$APP"
-else
-    codesign -s - --force "$APP"
-fi
+# Ad-hoc signature with an identifier-based designated requirement: the
+# Screen Recording grant binds to the bundle identifier instead of the build
+# hash, so it survives rebuilds.
+codesign -s - --force -r='designated => identifier "dev.luijait.blurtain"' "$APP"
 
 echo "Installed: $APP"
