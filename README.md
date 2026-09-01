@@ -6,6 +6,10 @@
 
 **blur + curtain** — a macOS menu bar app that draws a live censorship curtain over the *text* of your sensitive windows, and nothing else.
 
+<p align="center">
+  <img src="assets/demo.gif" width="620" alt="Blurtain censoring a terminal in real time">
+</p>
+
 Streaming, screen sharing or recording your screen with terminals and Slack open is how API keys end up on YouTube. Blurtain watches your sensitive apps and covers every line of text with a blurred, color-matched bar — the window chrome, backgrounds and layout stay visible, so your screen still looks like your screen.
 
 ## Features
