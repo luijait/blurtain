@@ -16,7 +16,7 @@ struct Config: Codable {
     var mergeGapX: Double = 24
     var detectInterval: Double = 0.25
     var captureScale: Double = 2
-    var debug: Bool = true
+    var debug: Bool = false // true: log to ~/Library/Logs/Blurtain.log + save UNCENSORED annotated captures to ~/Library/Logs/Blurtain/
 
     init() {}
 

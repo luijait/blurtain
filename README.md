@@ -58,12 +58,13 @@ Picking a scope activates censorship on it immediately. Icon states: 🙈⏳ ana
 | `rowDiffThreshold` | `90` | Row analysis: RGB distance from background that counts as content |
 | `detectInterval` | `0.25` | Seconds between detection passes |
 | `captureScale` | `2` | Capture resolution multiplier for OCR |
-| `debug` | `true` | Log to `~/Library/Logs/Blurtain.log` + annotated captures in `~/Library/Logs/Blurtain/` |
+| `debug` | `false` | Log to `~/Library/Logs/Blurtain.log` + annotated captures in `~/Library/Logs/Blurtain/`. **Debug captures are uncensored** — they exist to tune detection; leave this off in normal use |
 
 ## Security notes
 
 Be honest with your threat model:
 
+- **Nothing leaves your Mac.** Blurtain has no networking code of any kind; captures are processed in memory and discarded. The only permission it uses is Screen Recording, restricted to the apps you configure. Audit it — it's ~650 lines.
 - **Default bars are opaque — the text is unrecoverable.** An opaque bar replaces every text pixel with a flat color; there is nothing to deblur. The only signal that survives is each bar's tint (the line's *average* color, e.g. "this line was mostly green") — set `"colorFromText": false` if even that bothers you. Lowering `colorAlpha` switches to a frosted-glass look, which is pretty but merely *attenuates* information: recovery attacks on blurred/pixelated text exist, so don't use it for captures containing real secrets.
 - **Share your full screen, never an individual window.** Window-level sharing in Zoom/Meet/OBS captures the app's own surface and bypasses any overlay. Full-screen/display sharing captures the composited result, curtain included.
 - **New text has a small exposure window** (~half a second) until the next detection pass covers it. Newly opened windows are born fully covered.
